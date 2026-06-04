@@ -31,7 +31,7 @@ class PhoneDataGuesser:
             with urllib.request.urlopen(ONLINE_DAT_URL, timeout=5) as response:
                 self.file_content = response.read()
             
-            # 【新增逻辑】在线获取成功后，立即保存/更新到本地 phone.dat
+            # 在线获取成功后，立即保存/更新到本地 phone.dat
             try:
                 with open(self.dat_path, "wb") as f:
                     f.write(self.file_content)
@@ -89,8 +89,8 @@ class PhoneDataGuesser:
                 "city": city
             })
 
-    def guess_and_save(self, prefix_3, suffix_4, location_keyword, output_filename="resultPHONE.txt"):
-        """根据条件推测中间四位，并仅将电话号码保存到TXT文件中"""
+    def guess_and_save(self, prefix_3, suffix_4, location_keyword, output_txt="resultPHONE.txt", output_vcf="resultPHONE.vcf"):
+        """根据条件推测中间四位，并生成 TXT 文件与 VCF 通讯录文件"""
         if not self.records:
             return
 
@@ -108,16 +108,31 @@ class PhoneDataGuesser:
             
             middle_4 = rec["pref_7"][3:]
             full_phone = f"{prefix_3}{middle_4}{suffix_4}"
-            phone_list.append(full_phone)
+            phone_list.append((full_phone, rec["province"], rec["city"]))
             
-        # 将号码结果写入结果TXT文件
         if phone_list:
-            with open(output_filename, "w", encoding="utf-8") as f:
-                for phone in phone_list:
-                    f.write(f"{phone}\n")
-            print(f"🎉 成功！已将找到的 {len(phone_list)} 个手机号保存到本地结果文件: {output_filename}")
+            # 1. 写入 TXT 文件（纯号码）
+            with open(output_txt, "w", encoding="utf-8") as f_txt:
+                for phone, _, _ in phone_list:
+                    f_txt.write(f"{phone}\n")
+            print(f"🎉 成功！已将找到的 {len(phone_list)} 个手机号保存到本地文本: {output_txt}")
+
+            # 2. 【新增】写入 VCF 格式文件（标准通讯录格式）
+            with open(output_vcf, "w", encoding="utf-8") as f_vcf:
+                for idx, (phone, prov, city) in enumerate(phone_list, start=1):
+                    # 联系人姓名格式：归属地_前缀_后缀_序号 (例如: 杭州_139_8888_001)
+                    contact_name = f"{city or prov}_{prefix_3}_{suffix_4}_{idx:03d}"
+                    
+                    f_vcf.write("BEGIN:VCARD\n")
+                    f_vcf.write("VERSION:3.0\n")
+                    f_vcf.write(f"FN:{contact_name}\n")       # 显示全名
+                    f_vcf.write(f"N:;{contact_name};;;\n")    # 姓名结构化字段
+                    f_vcf.write(f"TEL;TYPE=CELL:{phone}\n")   # 手机号
+                    f_vcf.write("END:VCARD\n")
+            print(f"📇 成功！已同步生成标准通讯录文件: {output_vcf} ，可直接导入手机。")
+            
         else:
-            print("\n❌ 未找到匹配的结果，未生成结果文件。")
+            print("\n❌ 未找到匹配的结果，未生成任何文件。")
 
 # --- 运行交互 ---
 if __name__ == "__main__":
@@ -126,12 +141,12 @@ if __name__ == "__main__":
     
     if guesser.records:
         print("\n" + "=" * 40)
-        print("   手机号中间四位推测工具 (自动缓存及导出)")
+        print("   手机号中间四位推测与VCF生成工具")
         print("=" * 40)
         
         p3 = input("请输入手机号前3位 (例如 139): ").strip()
         s4 = input("请输入手机号后4位 (例如 8888): ").strip()
         loc = input("请输入归属地关键字 (例如 杭州): ").strip()
         
-        # 执行推测并将号码保存到 resultPHONE.txt
+        # 执行推测并同时保存 TXT 和 VCF 文件
         guesser.guess_and_save(p3, s4, loc)
